@@ -1,0 +1,389 @@
+<!DOCTYPE HTML>
+<html>
+  <head>
+    <title>Proxy parser / checker</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <link rel="stylesheet" href="http://ajax.googleapis.com/ajax/libs/dojo/1.7.1/dojo/resources/dojo.css"></link>
+    <link rel="stylesheet" href="http://ajax.googleapis.com/ajax/libs/dojo/1.7.1/dijit/themes/claro/claro.css" media="screen"></link>
+    <link rel="stylesheet" href="http://ajax.googleapis.com/ajax/libs/dojo/1.7.1/dojox/grid/resources/claroGrid.css" media="screen"></link>
+    <link rel="stylesheet" href="http://ajax.googleapis.com/ajax/libs/dojo/1.7.1/dojox/form/resources/CheckedMultiSelect.css" media="screen"></link>
+    <link rel="stylesheet" href="http://ajax.googleapis.com/ajax/libs/dojo/1.7.1/dojox/widget/Toaster/Toaster.css" media="screen"></link>
+    
+    <script src="http://ajax.googleapis.com/ajax/libs/dojo/1.7.1/dojo/dojo.js" type="text/javascript"></script>
+    <script src="app.js" type="text/javascript"></script>
+    <script src="country.js" type="text/javascript"></script>
+    <link rel="stylesheet" href="style.css" media="screen"></link>
+    <script type="text/javascript">
+      /* <![CDATA[ */
+
+var pxySMD = {
+    SMDVersion:"2.0",
+    transport:"GET", // GET, POST, JSONP
+    //envelope:"URL", // URL, PATH, JSON
+    envelope:"JSON",
+    services: {
+        startChecker: { target: "/checker/start", parameters: [] },
+        stopChecker: { target: "/checker/stop", parameters: [] },
+        startParser: { target: "/parser/start", parameters: [] },
+        stopParser: { target: "/parser/stop", parameters: [] },
+        svcInfo : { target: "/svcinfo", parameters: [] },
+        myip : { target: "/myip", parameters: [] },
+        checkerSetBatch: {
+            transport:"POST",
+            target: "/checker/setbatch",
+            parameters: [{ name: "batch", type: "string", optional: false }]
+        },
+        setServerProperty : {
+            transport:"POST",
+            target: "/server/setbyhostport",
+            parameters: [
+                { name: "host", type: "string", optional: false },
+                { name: "port", type: "string", optional: false },
+                { name: "obj", type: "object", optional: false }
+            ]
+        },
+        getSetting : {
+            target: "/setting/get",
+            parameters:[ { name: "key", type: "string", optional: false } ]
+        },
+        saveSettings : {
+            transport:"POST",
+            target: "/setting/savemany",
+            parameters:[ { name: "obj", type: "object", optional: false } ]
+        }
+    }
+}
+
+      dojo.require("dijit.layout.BorderContainer");
+      dojo.require("dijit.layout.ContentPane");
+      dojo.require("dijit.layout.TabContainer");
+      dojo.require("dijit.TitlePane");
+      dojo.require("dojox.grid.DataGrid");
+      dojo.require("dojo.data.ObjectStore");
+      dojo.require("dojo.data.ItemFileReadStore");
+      dojo.require("dojo.store.JsonRest");
+      dojo.require("dojox.rpc.Service");
+      //dojo.require("dojox.rpc.JsonRPC");
+      //dojo.require("dojo.io.script");
+      //dojo.require("dojox.rpc.Rest");
+      // extras
+      dojo.require("dojox.widget.Toaster");
+      dojo.require('dojox.timing');
+      //dojo.require("dojox.socket");
+      dojo.require("dojo.number");
+      dojo.require("dojox.validate");
+      dojo.require('dojox.validate.web');
+      dojo.require('dojox.validate.us');
+      dojo.require("dojox.NodeList.delegate");
+      
+      // form
+      dojo.require("dijit.dijit");
+      dojo.require("dijit.form.Button");
+      dojo.require("dijit.form.CheckBox");    // includes dijit.form.RadioButton
+      dojo.require("dijit.form.TextBox");
+      dojo.require('dijit.form.ValidationTextBox');
+      dojo.require("dijit.form.Select");
+      dojo.require('dijit.form.Form');
+      dojo.require("dojo.parser");
+
+      dojo.ready(function(){
+          dojo.parser.parse()
+
+          // country
+          var cntryStore = dojo.data.ItemFileReadStore({ url: "/countrylist/" })
+          dijit.byId('country').setStore(cntryStore)
+          dijit.byId('country').addOption({
+              value: "",
+              label: "Любая",
+              selected: true
+          })
+
+          // grid stores
+          var pxyJsonStore = new dojo.store.JsonRest({target:"/proxylist/", sortParam: "sort"})
+          var pxyStore = dojo.data.ObjectStore({objectStore: pxyJsonStore})
+          // grid
+          var fmtCn = function(v,row) {
+              if(v) {
+                  var cn = v.toLowerCase()
+                  var country = g_country[cn]
+                  if(country) {
+                      return '<img src="/gif/' + cn + '.gif" /> ' + country
+                  }
+                  else {
+                      return v
+                  }
+              }
+          }
+          var fmtEnabled = function(v,row) {
+              var cb = '<input type="checkbox" name="enabled" value="'+row+'"';
+              console.log(v)
+              if(v == true) {
+                cb += ' checked/>'
+              }
+              else {
+                cb += '/>'
+              }
+              return cb
+          }
+          var grid = new dojox.grid.DataGrid({
+              store: pxyStore,
+              autoHeight: false,
+              autoWidth: true,
+              structure: [
+                  {name:"IP", field:"host", width: "120px"},
+                  {name:"Порт", field:"port", width: "50px"},
+                  {name:"Тип", field:"type", width: "80px"},
+                  {name:"Анонимность", field:"anon", width: "100px"},
+                  {name:"Страна", field:"country", width: "300px", formatter: fmtCn },
+                  {name:"Скорость", field:"speed", width: "80px"},
+                  {name:"Стабильность", field:"stability", width: "100px"},
+                  {name:"Проверок", field:"scans", width: "90px"},
+                  {name:"Успешных", field:"ok_scans", width: "90px"},
+                  {name:"Вкл", field:"enabled", width: "35px", formatter: fmtEnabled }
+              ]
+          }, "pxyGrid")
+          dojo.connect(grid, '_onFetchComplete', function(items, req){
+              dojo.query("#info_found span")[0].innerHTML = grid.rowCount
+              //console.log(req.start)
+              //console.log(grid.rowCount)
+          })
+          fnFormChanged = function() { grid.setQuery( dojo.formToObject( dojo.byId('searchForm') ) ) }
+          grid.setStore(pxyStore)
+          grid.startup()
+          dojo.query("#pxyGrid").delegate("input[type=checkbox]", "onchange", function(evt) {
+              var item = grid.getItem(evt.target.value)
+              //console.log(item.host + " " + item.port)
+              //console.log(item.host + " " + item.port)
+              svc.setServerProperty({
+                  host: item.host,
+                  port: item.port,
+                  obj: { enabled: evt.target.checked }
+              })
+          })
+          //fnFormChanged()
+
+          // types checkboxed quest
+          var fnType0Changed = function(evt) {
+              dojo.query('#searchForm input[name=types]').forEach(function(cb) {
+                  var id = dojo.attr(cb, 'id')
+                  dijit.byId(id).set('checked', evt.target.checked)
+              })
+          }
+          var fnTypesChanged = function() {
+              var allChecked = dojo.query('#searchForm input[name=types]').every(function(e) {
+                  return dojo.attr(e, 'checked')
+              });
+              var el = dijit.byId('types0')
+              if(allChecked) {
+                  el.set('checked', true)
+              }
+              else {
+                  el.set('checked', false)
+              }
+          }
+          dojo.query("#searchForm input[name=types]").on('change', fnTypesChanged);
+          dojo.connect(dojo.byId('types0'),'change', fnType0Changed);
+          
+
+          // reload grid on every form change
+          dijit.byId('searchForm').getChildren().forEach(function(c) {
+              dojo.connect(c,'onChange',fnFormChanged);
+          });
+
+          dijit.byId('paneGrid').on('Show',function(e) {
+              fnFormChanged()
+          })
+
+          // "Services" tab
+          var svc = new dojox.rpc.Service(pxySMD)
+          SvcTab.constructor(svc)
+          SettingsTab.constructor(svc)
+          /*
+          var socket = dojox.socket({
+              url:"/comet",
+              headers: {
+                  "Accept": "application/json",
+                  "Content-Type": "application/json"
+              }});
+
+          socket.on("message", function(event){
+              var data = event.data;
+              console.log(data)
+          });
+          */
+          
+          
+      });
+      /* ]]> */
+    </script>
+    </head>
+    <body class="claro">
+      <div
+          id="appLayout" class="demoLayout"
+          data-dojo-type="dijit.layout.BorderContainer"
+          data-dojo-props="design: 'headline'">
+        <div class="centerPanel" id="tabContainer"
+             data-dojo-type="dijit.layout.TabContainer"
+             data-dojo-props="region: 'center', tabPosition: 'top'">
+          <div id="paneGrid"
+              data-dojo-type="dijit.layout.ContentPane"
+              data-dojo-props="title: 'Proxies'">
+            <div id="pxyLayout" data-dojo-type="dijit.layout.BorderContainer">
+              <div data-dojo-type="dijit.layout.ContentPane" data-dojo-props="region: 'center'" style="overflow: hidden">
+                <div id="pxyGrid"></div>
+              </div>
+              <div
+                  id="leftCol" class="edgePanel"
+                  data-dojo-type="dijit.layout.ContentPane"
+                  data-dojo-props="region: 'left', splitter: false">
+                <form dojoType="dijit.form.Form" id="searchForm" method="post">
+                  <table cellpadding="0" cellspacing="2">
+                    <tr>
+                      <td valign="top"><strong>Стабильность: </strong></td>
+                      <td>
+                        <select name="stability" id="stability" style="width: 100px;" dojoType="dijit.form.Select">
+                          <option value="0">Любая</option>
+                          <option value="50">Выше 50%</option>
+                          <option value="75">Выше 75%</option>
+                          <option value="90">Выше 90%</option>
+                          <option value="99">Выше 99%</option>
+                        </select>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td valign="top"><strong>Скорость ответа: </strong></td>
+                      <td>
+                        <select name="speed" id="speed" style="width: 150px;" dojoType="dijit.form.Select">
+                          <option value="9999">Любая</option>
+                          <option value="15">Меньше 15 сек</option>
+                          <option value="5">Меньше 5 сек</option>
+                          <option value="1">Меньше 1 сек</option>
+                        </select>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td valign="top"><strong>Страна: </strong></td>
+                      <td>
+                        <select name="country" id="country" style="width: 200px;" dojoType="dijit.form.Select" data-dojo-props="maxHeight: -1">
+                        </select>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td valign="top"><strong>Типы: </strong></td>
+                      <td>
+                        <input type="checkbox" id="types0" dojoType="dijit.form.CheckBox" checked="checked"/>
+                        <label for="types0">Все</label>
+                        <br/>
+                        <input type="checkbox" id="types1" name="types" value="unchecked" checked="checked" dojoType="dijit.form.CheckBox" />
+                        <label for="types1">unchecked</label>
+                        <br/>
+                        <input type="checkbox" id="types2" name="types" value="unknown" checked="checked" dojoType="dijit.form.CheckBox" />
+                        <label for="types1">unknown</label>
+                        <br/>
+                        <input type="checkbox" id="types3" name="types" value="http" checked="checked" dojoType="dijit.form.CheckBox" />
+                        <label for="types2">HTTP</label>
+                        <br/>
+                        <input type="checkbox" id="types4" name="types" value="socks4" checked="checked" dojoType="dijit.form.CheckBox" />
+                        <label for="types3">SOCKS4</label>
+                        <br/>
+                        <input type="checkbox" id="types5" name="types" value="socks5" checked="checked" dojoType="dijit.form.CheckBox" />
+                        <label for="types4">SOCKS5</label>
+                        <br/>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td valign="top"><strong>Порт:</strong></td>
+                      <td>
+                        <input type="text" id="port" name="port" dojoType="dijit.form.TextBox" /> 
+                      </td>
+                    </tr>
+                    <tr>
+                      <td valign="top"><strong>Только рабочие</strong></td>
+                      <td><input type="checkbox" id="working" name="okonly" checked="checked" dojoType="dijit.form.CheckBox" /></td>
+                    </tr>
+                  </table>
+                  <!--<input type="submit" value="Submit Form" label="Submit Form" id="submitButton" dojoType="dijit.form.Button" />-->
+                </form>
+                <h3 id="info_found">Найдено серверов: <span>0</span></h3>
+              </div>
+            </div>
+          </div>
+          <div id="paneSettings"
+              data-dojo-type="dijit.layout.ContentPane"
+              data-dojo-props="title: 'Настройки'">
+            <h2>Настройки</h2>
+            <form dojoType="dijit.form.Form" id="settingsForm" method="post">
+              <table cellpadding="0" cellspacing="2">
+                <tr>
+                  <td valign="top" align="right" title="Для проверки анонимности (оставьте пустым для автодетекта)"><strong>Мой IP:</strong></td>
+                  <td>
+                    <input type="text" id="txtMyIP" name="my_ip" dojoType="dijit.form.ValidationTextBox" data-dojo-props="required: false" />
+                  </td>
+                </tr>
+                <tr>
+                  <td valign="top" align="right" title="Адрес сайта, для тестового запроса через прокси"><strong>URL для проверки *:</strong></td>
+                  <td>
+                    <input type="text" id="txtCheckerURL" name="checker_url" dojoType="dijit.form.ValidationTextBox" required="true" validator="dojox.validate.isUrl" placeholder="http://specify.url" /> 
+                  </td>
+                </tr>
+                <tr>
+                  <td valign="top" align="right" title="Строка, которая должна присутствовать на указанном выше URL (люая строка на латинице)"><strong>Строка для проверки *:</strong></td>
+                  <td>
+                    <input type="text" id="txtCheckerChat" name="checker_chat" dojoType="dijit.form.ValidationTextBox" required="true" /> 
+                  </td>
+                </tr>
+                <tr>
+                  <td valign="top" align="right" title="Как часто проверять доступность серверов)"><strong>Интервал проверки (сек) *:</strong></td>
+                  <td>
+                      <input type="text" id="txtScanInterval" name="scan_interval" dojoType="dijit.form.ValidationTextBox" required="true" data-dojo-props="validator:dojox.validate.isInRange, constraints:{ min:0, max:1000000 }"/> 
+                  </td>
+                </tr>
+              </table>
+              <input type="submit" id="btnSaveSettings" value="Сохранить" label="Сохранить" dojoType="dijit.form.Button" />
+            </form>
+            
+          </div>
+          <div id="paneServices"
+              data-dojo-type="dijit.layout.ContentPane"
+              data-dojo-props="title: 'Службы'">
+            <div id="checker_tp" data-dojo-type="dijit.TitlePane" data-dojo-props="title: 'Checker'">
+                <div>
+                    <button id="btnStartChecker" data-dojo-type="dijit.form.Button" type="button">
+                        Запустить
+                    </button>
+                    <span class="checkerInfo"></span>
+                    <span class="checkerInfo"></span>
+                </div>
+                <div>
+                    <label for="txtCheckerBatch">Размер очереди</label>
+                    <input type="text" id="txtCheckerBatch" name="batchsize" style="width: 40px;" dojoType="dijit.form.TextBox" value="10" />
+                    <button id="btnSetChecker" data-dojo-type="dijit.form.Button" type="button">
+                        Установить
+                    </button>
+                </div>
+            </div>
+
+            <div id="parser_tp" data-dojo-type="dijit.TitlePane" data-dojo-props="title: 'Parser'">
+                <div>
+                    <button id="btnStartParser" data-dojo-type="dijit.form.Button" type="button">
+                        Запустить
+                    </button>
+                    <span class="parserInfo"></span>
+                    <span class="parserInfo"></span>
+                </div>
+            </div>
+
+          </div>
+        </div>
+        <div
+            class="edgePanel"
+            data-dojo-type="dijit.layout.ContentPane"
+            data-dojo-props="region: 'top'">
+          <h1>Сканер проксей</h1>
+        </div>
+      </div>
+      <div data-dojo-type="dojox.widget.Toaster" data-dojo-props="positionDirection:'br-left', messageTopic:'toaster'"
+           id="errToaster">
+      </div>
+    </body>
+  </html>

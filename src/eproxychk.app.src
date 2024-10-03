@@ -1,0 +1,9 @@
+%% -*- erlang -*-
+{application, eproxychk,
+ [{description, "eproxychk"},
+  {vsn, "0.1"},
+  {modules, []},
+  {registered, []},
+  {mod, {'eproxychk_app', []}},
+  {env, []},
+  {applications, [kernel, stdlib, crypto]}]}.
